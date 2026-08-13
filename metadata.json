@@ -1,0 +1,6 @@
+{
+  "name": "Legacy Data Migration & 3NF Seed Generator",
+  "description": "Migration assistant that processes legacy CSV datasets, allows users to design target 3NF schema, map columns, define transformation rules, and generates migration and seed SQL.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
