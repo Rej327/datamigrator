@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Database, FileSpreadsheet, GitMerge, LayoutDashboard, Play, TableProperties, Sun, Moon, Save } from 'lucide-react';
 import { useStore } from '../../store';
 
@@ -11,6 +11,17 @@ type LayoutProps = {
 export function Layout({ children, activeTab, setActiveTab }: LayoutProps) {
   const { project, theme, toggleTheme, saveCurrentWorkspace } = useStore();
 
+  useEffect(() => {
+    const root = window.document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+      root.style.colorScheme = 'dark';
+    } else {
+      root.classList.remove('dark');
+      root.style.colorScheme = 'light';
+    }
+  }, [theme]);
+
   const navItems = [
     { id: 'project', label: 'Project', icon: LayoutDashboard },
     { id: 'import', label: '1. Import & Profile', icon: FileSpreadsheet, disabled: !project },
@@ -21,7 +32,7 @@ export function Layout({ children, activeTab, setActiveTab }: LayoutProps) {
   ];
 
   return (
-    <div className={`${theme} flex h-screen bg-slate-50 dark:bg-zinc-950 text-slate-900 dark:text-slate-200 font-sans transition-colors duration-200`}>
+    <div className="flex h-screen bg-slate-50 dark:bg-zinc-950 text-slate-900 dark:text-slate-200 font-sans transition-colors duration-200">
       <aside className="w-64 bg-white dark:bg-slate-800/50 border-r border-slate-200 dark:border-slate-700 flex flex-col shrink-0 transition-colors duration-200">
         <div className="h-16 flex items-center px-6 border-b border-slate-200 dark:border-slate-700">
           <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center font-bold text-white text-lg italic mr-3">S</div>
