@@ -6,11 +6,18 @@ import { TargetSchema } from './components/TargetSchema';
 import { ColumnMappingUI } from './components/ColumnMapping';
 import { Transformations } from './components/Transformations';
 import { GenerateSQL } from './components/GenerateSQL';
+import { PasswordGate } from './components/PasswordGate';
 import { useStore } from './store';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('project');
   const theme = useStore(state => state.theme);
+  const isAuthenticated = useStore(state => state.isAuthenticated);
+  const initDatabase = useStore(state => state.initDatabase);
+
+  useEffect(() => {
+    initDatabase();
+  }, [initDatabase]);
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -19,6 +26,15 @@ export default function App() {
       document.documentElement.classList.remove('dark');
     }
   }, [theme]);
+
+  // Entrance Password Gate
+  if (!isAuthenticated) {
+    return (
+      <div className={theme === 'dark' ? 'dark' : ''}>
+        <PasswordGate />
+      </div>
+    );
+  }
 
   const renderContent = () => {
     switch (activeTab) {
@@ -47,3 +63,4 @@ export default function App() {
     </div>
   );
 }
+

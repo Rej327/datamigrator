@@ -3,7 +3,7 @@ import { useStore } from '../store';
 import { TargetTable, TargetColumn } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
-import { Plus, Trash2, Key, Database, Server, Upload, X } from 'lucide-react';
+import { Plus, Trash2, Key, Database, Server, Upload, X, Loader2, ArrowRight } from 'lucide-react';
 
 const parseSimpleDDL = (ddl: string, fallbackTableName = 'new_table'): TargetTable[] => {
   const tables: TargetTable[] = [];
@@ -110,18 +110,37 @@ export function TargetSchema({ onNext }: { onNext: () => void }) {
   
   const [showImportModal, setShowImportModal] = useState(false);
   const [ddlInput, setDdlInput] = useState('');
+  const [isParsingDDL, setIsParsingDDL] = useState(false);
+  const [isAddingTable, setIsAddingTable] = useState(false);
+  const [deletingTableId, setDeletingTableId] = useState<string | null>(null);
+  const [switchingTableId, setSwitchingTableId] = useState<string | null>(null);
+  const [isNavigatingNext, setIsNavigatingNext] = useState(false);
+
+  const handleSelectTable = (tableId: string) => {
+    if (activeTableId === tableId) return;
+    setSwitchingTableId(tableId);
+    setTimeout(() => {
+      setActiveTableId(tableId);
+      setSwitchingTableId(null);
+    }, 100);
+  };
 
   const handleAddTable = () => {
-    const newTable: TargetTable = {
-      id: uuidv4(),
-      name: 'new_table',
-      columns: [
-        { id: uuidv4(), name: 'id', type: 'uuid', isPrimaryKey: true, nullable: false, isImported: false }
-      ],
-      isImported: false
-    };
-    addTargetTable(newTable);
-    setActiveTableId(newTable.id);
+    setIsAddingTable(true);
+    setTimeout(() => {
+      const newTable: TargetTable = {
+        id: uuidv4(),
+        name: 'table_' + (targetTables.length + 1),
+        columns: [
+          { id: uuidv4(), name: 'id', type: 'uuid', isPrimaryKey: true, nullable: false, isImported: false }
+        ],
+        isImported: false
+      };
+      addTargetTable(newTable);
+      setActiveTableId(newTable.id);
+      setIsAddingTable(false);
+      toast.success(`Created table "${newTable.name}"`);
+    }, 150);
   };
 
   const handleAddColumn = (tableId: string) => {
@@ -132,34 +151,63 @@ export function TargetSchema({ onNext }: { onNext: () => void }) {
       ...table,
       columns: [
         ...table.columns,
-        { id: uuidv4(), name: 'new_column', type: 'varchar', nullable: true, isImported: false } as TargetColumn
+        { id: uuidv4(), name: 'col_' + (table.columns.length + 1), type: 'varchar', nullable: true, isImported: false } as TargetColumn
       ]
     };
     updateTargetTable(newTable);
   };
 
+  const handleRemoveTable = (tableId: string) => {
+    setDeletingTableId(tableId);
+    setTimeout(() => {
+      removeTargetTable(tableId);
+      if (activeTableId === tableId) {
+        const remaining = targetTables.filter(t => t.id !== tableId);
+        setActiveTableId(remaining[0]?.id || null);
+      }
+      setDeletingTableId(null);
+      toast.info('Table deleted');
+    }, 150);
+  };
+
+  const handleProceedNext = () => {
+    setIsNavigatingNext(true);
+    setTimeout(() => {
+      setIsNavigatingNext(false);
+      onNext();
+    }, 150);
+  };
+
   const handleImportDDL = () => {
     if (!ddlInput.trim()) return;
-    let parsedTables = parseSimpleDDL(ddlInput);
-    
-    // Fallback: if no tables found, try to parse as just a list of columns
-    if (parsedTables.length === 0 && !ddlInput.toUpperCase().includes('TABLE')) {
-      const fallbackDdl = `CREATE TABLE imported_table (\n${ddlInput}\n);`;
-      const fallbackTables = parseSimpleDDL(fallbackDdl, 'imported_table');
-      if (fallbackTables.length > 0 && fallbackTables[0].columns.length > 0) {
-        parsedTables = fallbackTables;
-      }
-    }
+    setIsParsingDDL(true);
 
-    if (parsedTables.length > 0) {
-      parsedTables.forEach(t => addTargetTable(t));
-      setActiveTableId(parsedTables[0].id);
-      setShowImportModal(false);
-      setDdlInput('');
-      toast.success(`Successfully imported ${parsedTables.length} table(s)`);
-    } else {
-      toast.error('Could not parse any CREATE TABLE statements. Please check your SQL syntax or try pasting just the column definitions separated by commas.');
-    }
+    setTimeout(() => {
+      try {
+        let parsedTables = parseSimpleDDL(ddlInput);
+        
+        // Fallback: if no tables found, try to parse as just a list of columns
+        if (parsedTables.length === 0 && !ddlInput.toUpperCase().includes('TABLE')) {
+          const fallbackDdl = `CREATE TABLE imported_table (\n${ddlInput}\n);`;
+          const fallbackTables = parseSimpleDDL(fallbackDdl, 'imported_table');
+          if (fallbackTables.length > 0 && fallbackTables[0].columns.length > 0) {
+            parsedTables = fallbackTables;
+          }
+        }
+
+        if (parsedTables.length > 0) {
+          parsedTables.forEach(t => addTargetTable(t));
+          setActiveTableId(parsedTables[0].id);
+          setShowImportModal(false);
+          setDdlInput('');
+          toast.success(`Successfully imported ${parsedTables.length} table(s)`);
+        } else {
+          toast.error('Could not parse any CREATE TABLE statements. Please check SQL syntax.');
+        }
+      } finally {
+        setIsParsingDDL(false);
+      }
+    }, 200);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -181,72 +229,132 @@ export function TargetSchema({ onNext }: { onNext: () => void }) {
   ];
 
   return (
-    <div className="flex h-full space-x-4 relative">
-      {/* Sidebar: Table List */}
-      <div className="w-64 bg-white dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden shrink-0">
-        <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50">
+    <div className="flex h-full space-x-6">
+      
+      {/* Sidebar: Tables List */}
+      <div className="w-72 bg-white dark:bg-slate-900/60 rounded-2xl border border-slate-200 dark:border-slate-800/80 flex flex-col overflow-hidden shrink-0 backdrop-blur-xl shadow-sm dark:shadow-xl transition-colors">
+        <div className="p-4 border-b border-slate-200 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-950/40">
           <div className="flex justify-between items-center mb-3">
-            <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center">
+            <h3 className="text-[11px] font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400 flex items-center">
               <Database className="w-3.5 h-3.5 mr-2 text-emerald-600 dark:text-emerald-400" />
-              Target Tables
+              Target Tables ({targetTables.length})
             </h3>
-            <button onClick={handleAddTable} title="Add Table Manually" className="text-emerald-600 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-300 transition-colors">
-              <Plus className="w-4 h-4" />
+            <button
+              onClick={() => setShowImportModal(true)}
+              className="p-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white rounded-lg text-xs font-semibold flex items-center transition-colors shadow-xs cursor-pointer"
+              title="Import DDL from SQL"
+            >
+              <Upload className="w-3.5 h-3.5" />
             </button>
           </div>
+          
           <button 
-            onClick={() => setShowImportModal(true)}
-            className="w-full py-1.5 px-3 border border-dashed border-slate-300 dark:border-slate-600 rounded-md text-xs font-semibold text-slate-600 dark:text-slate-400 hover:border-emerald-400 dark:hover:border-emerald-500 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors flex items-center justify-center"
+            onClick={handleAddTable}
+            disabled={isAddingTable}
+            className="w-full py-2 bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 rounded-xl font-bold transition-all text-xs flex items-center justify-center space-x-1.5 shadow-xs cursor-pointer disabled:opacity-60"
           >
-            <Upload className="w-3 h-3 mr-1.5" /> Import DDL Schema
+            {isAddingTable ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-emerald-600 dark:text-emerald-400" />
+                <span>Creating...</span>
+              </>
+            ) : (
+              <>
+                <Plus className="w-4 h-4" />
+                <span>Create Target Table</span>
+              </>
+            )}
           </button>
         </div>
+
         <div className="flex-1 overflow-y-auto p-3 space-y-2">
           {targetTables.length === 0 ? (
-            <div className="text-sm text-slate-500 p-4 text-center">No tables defined yet.</div>
+            <div className="text-center py-12 px-4 border border-dashed border-slate-300 dark:border-slate-800 rounded-xl">
+              <Database className="w-6 h-6 text-slate-400 dark:text-slate-600 mx-auto mb-2" />
+              <p className="text-xs text-slate-500 font-medium">No target tables defined.</p>
+              <p className="text-[10px] text-slate-400 dark:text-slate-600 mt-1">Import SQL DDL or create manual table.</p>
+            </div>
           ) : (
             targetTables.map(table => (
-              <button
+              <div 
                 key={table.id}
-                onClick={() => setActiveTableId(table.id)}
-                className={`w-full text-left px-3 py-2 rounded-lg text-sm font-semibold transition-colors flex justify-between items-center border ${
-                  activeTableId === table.id 
-                    ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30' 
-                    : 'bg-white dark:bg-slate-900/50 text-slate-700 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
+                onClick={() => handleSelectTable(table.id)}
+                className={`group flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
+                  activeTable?.id === table.id 
+                    ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-300 dark:border-emerald-500/40 text-emerald-800 dark:text-emerald-300 shadow-sm' 
+                    : 'bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
               >
-                <div className="truncate flex items-center">
-                  <span className="truncate">{table.name}</span>
-                  {table.isImported && (
-                    <span className="ml-1.5 px-1 py-0.5 rounded text-[8px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 uppercase">Imported</span>
-                  )}
+                <div className="flex items-center truncate">
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center mr-2.5 shrink-0 ${
+                    activeTable?.id === table.id ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'
+                  }`}>
+                    {switchingTableId === table.id ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-600 dark:text-emerald-400" />
+                    ) : (
+                      <Database className="w-3.5 h-3.5" />
+                    )}
+                  </div>
+                  <span className="text-xs font-bold truncate text-slate-800 dark:text-slate-200">{table.name}</span>
                 </div>
-                <Trash2 
-                  className={`w-3.5 h-3.5 text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity ${activeTableId === table.id ? 'opacity-100 text-emerald-500 dark:text-emerald-400' : ''}`}
-                  onClick={(e) => { e.stopPropagation(); removeTargetTable(table.id); if(activeTableId===table.id) setActiveTableId(null); }}
-                />
-              </button>
+                <button 
+                  onClick={(e) => { 
+                    e.stopPropagation(); 
+                    handleRemoveTable(table.id);
+                  }}
+                  disabled={deletingTableId === table.id}
+                  className="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg cursor-pointer"
+                  title="Delete table"
+                >
+                  {deletingTableId === table.id ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-red-500" />
+                  ) : (
+                    <Trash2 className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              </div>
             ))
           )}
         </div>
       </div>
 
       {/* Main Content: Table Editor */}
-      <div className="flex-1 bg-white dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden">
+      <div className="flex-1 bg-white dark:bg-slate-900/60 rounded-2xl border border-slate-200 dark:border-slate-800/80 flex flex-col overflow-hidden backdrop-blur-xl shadow-sm dark:shadow-xl transition-colors">
         {activeTable ? (
           <>
-            <div className="p-6 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex justify-between items-center shrink-0">
-              <div className="flex items-center space-x-4">
-                <Server className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                <input
-                  type="text"
-                  value={activeTable.name}
-                  onChange={(e) => updateTargetTable({ ...activeTable, name: e.target.value })}
-                  className="text-xl font-bold text-slate-800 dark:text-slate-200 bg-transparent border-none outline-none focus:ring-0 p-0 hover:bg-slate-200 dark:hover:bg-slate-800 rounded px-2 py-1 transition-colors"
-                />
+            <div className="p-6 border-b border-slate-200 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-950/40 flex justify-between items-center shrink-0">
+              <div className="flex items-center space-x-3">
+                <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400 flex items-center justify-center font-bold">
+                  <Server className="w-5 h-5" />
+                </div>
+                <div>
+                  <input
+                    type="text"
+                    value={activeTable.name}
+                    onChange={(e) => updateTargetTable({ ...activeTable, name: e.target.value })}
+                    className="text-lg font-extrabold text-slate-900 dark:text-white bg-transparent border border-transparent hover:border-slate-300 dark:hover:border-slate-700 focus:border-emerald-500 rounded-lg px-2.5 py-1 outline-none transition-all"
+                  />
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono pl-2.5 mt-0.5">
+                    {activeTable.columns.length} columns defined {activeTable.isImported ? '• Imported from DDL' : '• Custom Schema'}
+                  </p>
+                </div>
               </div>
-              <button onClick={onNext} className="px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-500 font-semibold transition-colors text-sm shadow-sm">
-                Next: Map Columns
+              <button 
+                onClick={handleProceedNext} 
+                disabled={isNavigatingNext}
+                className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white rounded-xl font-bold transition-all text-xs shadow-lg shadow-emerald-950/20 flex items-center space-x-2 cursor-pointer"
+              >
+                {isNavigatingNext ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Loading Mapping...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Proceed to Mapping</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
               </button>
             </div>
             
@@ -404,10 +512,17 @@ export function TargetSchema({ onNext }: { onNext: () => void }) {
               </button>
               <button 
                 onClick={handleImportDDL}
-                disabled={!ddlInput.trim()}
-                className="px-6 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-500 font-semibold transition-colors text-sm disabled:opacity-50"
+                disabled={!ddlInput.trim() || isParsingDDL}
+                className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition-all text-xs flex items-center space-x-1.5 shadow-md shadow-emerald-950/20 disabled:opacity-50 cursor-pointer"
               >
-                Parse & Import
+                {isParsingDDL ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Parsing DDL Schema...</span>
+                  </>
+                ) : (
+                  <span>Parse & Import</span>
+                )}
               </button>
             </div>
           </div>

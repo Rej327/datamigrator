@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "../index.css";
 
 export const metadata: Metadata = {
-  title: "Data Migrator",
-  description: "Legacy Data Migration App",
+  title: "DataMigrator - Enterprise Data Migration",
+  description: "Legacy Data Migration, Anomaly Diagnostics & Schema Mapping Tool",
 };
 
 export default function RootLayout({

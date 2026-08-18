@@ -70,6 +70,9 @@ export type WorkspaceSnapshot = {
 export type AppState = {
   theme: 'light' | 'dark';
   toggleTheme: () => void;
+  isAuthenticated: boolean;
+  login: (password: string) => boolean;
+  logout: () => void;
 
   savedWorkspaces: WorkspaceSnapshot[];
 
@@ -80,12 +83,15 @@ export type AppState = {
   transformations: Transformation[];
   
   // Actions
+  initDatabase: () => Promise<void>;
   loadWorkspace: (id: string) => void;
   saveCurrentWorkspace: () => void;
   deleteWorkspace: (id: string) => void;
 
   setProject: (project: Project) => void;
   addSource: (data: SourceData) => void;
+  updateSource: (source: SourceData) => void;
+  updateSourceRows: (sourceId: string, rows: any[]) => void;
   removeSource: (id: string) => void;
   addTargetTable: (table: TargetTable) => void;
   updateTargetTable: (table: TargetTable) => void;
